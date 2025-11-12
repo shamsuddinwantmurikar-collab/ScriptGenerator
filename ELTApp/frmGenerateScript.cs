@@ -1,4 +1,5 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.SqlClient;
+using System.Diagnostics;
 using System.Text;
 
 namespace ELTApp
@@ -172,19 +173,45 @@ namespace ELTApp
                     conn.Open();
 
                     string query = $"SELECT * FROM {tableName}";
-                    if (tableName.Contains("SITE", StringComparison.OrdinalIgnoreCase))
+
+                    if (!string.IsNullOrWhiteSpace(siteName))
                     {
-                        query = $@"
-                    SELECT ID_LIST, ID_SITE 
-                    FROM {tableName} 
-                    WHERE ID_SITE = (
-                        SELECT ID FROM EM_SITES WHERE SITENAME = @SiteName
-                    )";
+                        if (tableName.Contains("SITE", StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Linked table (e.g., EM_Site_Buildings)
+                            // Find base table name (remove 'Site_' part)
+                            string baseTable = tableName.Replace("Site_", "", StringComparison.OrdinalIgnoreCase);
+
+                            query = $@"
+                                    SELECT t.ID_LIST, t.ID_SITE
+                                    FROM {tableName} t
+                                    INNER JOIN {baseTable} b ON t.ID_LIST = b.ID
+                                    INNER JOIN EM_SITES s ON t.ID_SITE = s.ID
+                                    WHERE s.SITENAME = @SiteName
+                                      AND ISNULL(b.DELCODE, '') <> 'SYSTEM'";
+                        }
+                        else
+                        {
+                            // Base table (e.g., EM_Buildings)
+                            // Construct linked site table name
+                            string siteTable = tableName.Insert(tableName.IndexOf('_') + 1, "Site_");
+
+                            query = $@"
+                                    SELECT DISTINCT t.*
+                                    FROM {tableName} t
+                                    INNER JOIN {siteTable} st ON t.ID = st.ID_LIST
+                                    INNER JOIN EM_SITES s ON st.ID_SITE = s.ID
+                                    WHERE s.SITENAME = @SiteName
+                                      AND ISNULL(t.DELCODE, '') <> 'SYSTEM'";
+                        }
+
+                        Debug.Print(query);
+
                     }
 
                     using (SqlCommand cmd = new SqlCommand(query, conn))
                     {
-                        if (tableName.Contains("SITE", StringComparison.OrdinalIgnoreCase))
+                        if (!string.IsNullOrWhiteSpace(siteName))
                             cmd.Parameters.AddWithValue("@SiteName", siteName);
 
                         using (SqlDataReader reader = cmd.ExecuteReader())
@@ -196,7 +223,7 @@ namespace ELTApp
 
                             if (!reader.HasRows)
                             {
-                                sb.AppendLine($"-- Table {tableName} has no data.");
+                                sb.AppendLine($"-- Table {tableName} has no data for site '{siteName}'.");
                                 return sb.ToString();
                             }
 
@@ -228,7 +255,9 @@ namespace ELTApp
                                 }
 
                                 string insert = $"INSERT INTO {tableName} ({string.Join(",", columnNames)}) VALUES ({string.Join(", ", values)});";
-                                sb.AppendLine(insert.ToUpper());
+
+                                if (!insert.Contains("SYSTEM", StringComparison.OrdinalIgnoreCase))
+                                    sb.AppendLine(insert.ToUpper());
                             }
                         }
                     }
@@ -236,14 +265,12 @@ namespace ELTApp
             }
             catch (Exception ex)
             {
-                // Return a detailed error message including table name
                 string errorMessage = $"-- ERROR in table '{tableName}': {ex.Message}";
                 return errorMessage;
             }
 
             return sb.ToString();
         }
-
 
         private void btnLoad_Click(object sender, EventArgs e)
         {

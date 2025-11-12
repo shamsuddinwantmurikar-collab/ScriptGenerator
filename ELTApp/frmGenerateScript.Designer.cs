@@ -75,6 +75,7 @@
             txtInsert.Size = new Size(998, 613);
             txtInsert.TabIndex = 14;
             txtInsert.Text = "";
+            txtInsert.WordWrap = false;
             // 
             // checkedListBoxTables
             // 
