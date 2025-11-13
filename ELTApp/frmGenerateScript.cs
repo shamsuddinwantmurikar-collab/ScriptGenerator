@@ -1,4 +1,5 @@
 ﻿using Microsoft.Data.SqlClient;
+using ShamsGenScripts;
 using System.Diagnostics;
 using System.Text;
 
@@ -140,7 +141,7 @@ namespace ELTApp
                 foreach (var table in selectedTables)
                 {
                     allInserts.AppendLine($"-- ==== INSERTS FOR TABLE: {table} ====");
-                    string script = GenerateInsertStatements(connectionString, table, txtSiteFilter.Text);
+                    string script = SqlStatementGenerator.GenerateInsertStatements(connectionString, table, txtSiteFilter.Text);
                     allInserts.AppendLine(script);
                     allInserts.AppendLine();
                 }
@@ -161,126 +162,6 @@ namespace ELTApp
                 MessageBox.Show($"Error: {ex.Message}");
             }
         }
-
-        static string GenerateInsertStatements(string conStr, string tableName, string siteName = "")
-        {
-            StringBuilder sb = new StringBuilder();
-
-            try
-            {
-                using (SqlConnection conn = new SqlConnection(conStr))
-                {
-                    conn.Open();
-
-                    string query = $"SELECT * FROM {tableName}";
-
-                    if (!string.IsNullOrWhiteSpace(siteName))
-                    {
-                        if (tableName.Contains("SITE", StringComparison.OrdinalIgnoreCase))
-                        {
-                            // Linked table (e.g., EM_Site_Buildings)
-                            // Find base table name (remove 'Site_' part)
-                            string baseTable = tableName.Replace("Site_", "", StringComparison.OrdinalIgnoreCase);
-
-                            query = $@"
-                                    SELECT t.ID_LIST, t.ID_SITE
-                                    FROM {tableName} t
-                                    INNER JOIN {baseTable} b ON t.ID_LIST = b.ID
-                                    INNER JOIN EM_SITES s ON t.ID_SITE = s.ID
-                                    WHERE s.SITENAME = @SiteName
-                                      AND ISNULL(b.DELCODE, '') <> 'SYSTEM'";
-                        }
-                        else
-                        {
-                            // Base table (e.g., EM_Buildings)
-                            // Construct linked site table name
-                            string siteTable = tableName.Insert(tableName.IndexOf('_') + 1, "Site_");
-
-                            query = $@"
-                                    SELECT t.*
-                                    FROM {tableName} t
-                                    INNER JOIN {siteTable} st ON t.ID = st.ID_LIST
-                                    INNER JOIN EM_SITES s ON st.ID_SITE = s.ID
-                                    WHERE s.SITENAME = @SiteName
-                                      AND ISNULL(t.DELCODE, '') <> 'SYSTEM'";
-                        }
-
-                        Debug.Print(query);
-
-                    }
-
-                    using (SqlCommand cmd = new SqlCommand(query, conn))
-                    {
-                        if (!string.IsNullOrWhiteSpace(siteName))
-                            cmd.Parameters.AddWithValue("@SiteName", siteName);
-
-                        using (SqlDataReader reader = cmd.ExecuteReader())
-                        {
-                            var schema = reader.GetColumnSchema();
-                            var columnNames = new List<string>();
-                            // List of columns you want to exclude
-                            var excludedColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-                                                        {
-                                                            "FellerID", "TestMap"
-                                                        };
-
-                            foreach (var col in schema)
-                            {
-                                if (!excludedColumns.Contains(col.ColumnName))
-                                    columnNames.Add(col.ColumnName);
-                            }
-
-                            if (!reader.HasRows)
-                            {
-                                sb.AppendLine($"-- Table {tableName} has no data for site '{siteName}'.");
-                                return sb.ToString();
-                            }
-
-                            while (reader.Read())
-                            {
-                                var values = new List<string>();
-
-                                for (int i = 0; i < columnNames.Count; i++)
-                                {
-                                    object value = reader.GetValue(i);
-
-                                    if (value == DBNull.Value)
-                                        values.Add("NULL");
-                                    else if (value is string || value is DateTime || value is Guid)
-                                    {
-                                        string escaped = value.ToString().Replace("'", "''");
-                                        values.Add($"'{escaped}'");
-                                    }
-                                    else if (value is bool)
-                                        values.Add((bool)value ? "1" : "0");
-                                    else if (value is byte[])
-                                    {
-                                        byte[] bytes = (byte[])value;
-                                        string hex = BitConverter.ToString(bytes).Replace("-", "");
-                                        values.Add($"0x{hex}");
-                                    }
-                                    else
-                                        values.Add(value.ToString());
-                                }
-
-                                string insert = $"INSERT INTO {tableName} ({string.Join(",", columnNames)}) VALUES ({string.Join(", ", values)});";
-
-                                if (!insert.Contains("SYSTEM", StringComparison.OrdinalIgnoreCase))
-                                    sb.AppendLine(insert.ToUpper());
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                string errorMessage = $"-- ERROR in table '{tableName}': {ex.Message}";
-                return errorMessage;
-            }
-
-            return sb.ToString();
-        }
-
         private void btnLoad_Click(object sender, EventArgs e)
         {
             string query = @"
