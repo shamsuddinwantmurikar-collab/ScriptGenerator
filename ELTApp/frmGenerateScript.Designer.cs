@@ -148,8 +148,10 @@
             txtPassword.ForeColor = SystemColors.Highlight;
             txtPassword.Location = new Point(129, 119);
             txtPassword.Name = "txtPassword";
+            txtPassword.PasswordChar = '*';
             txtPassword.Size = new Size(250, 26);
             txtPassword.TabIndex = 7;
+            txtPassword.UseSystemPasswordChar = true;
             // 
             // label1
             // 

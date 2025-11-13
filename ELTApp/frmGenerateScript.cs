@@ -197,7 +197,7 @@ namespace ELTApp
                             string siteTable = tableName.Insert(tableName.IndexOf('_') + 1, "Site_");
 
                             query = $@"
-                                    SELECT DISTINCT t.*
+                                    SELECT t.*
                                     FROM {tableName} t
                                     INNER JOIN {siteTable} st ON t.ID = st.ID_LIST
                                     INNER JOIN EM_SITES s ON st.ID_SITE = s.ID
@@ -218,8 +218,17 @@ namespace ELTApp
                         {
                             var schema = reader.GetColumnSchema();
                             var columnNames = new List<string>();
+                            // List of columns you want to exclude
+                            var excludedColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                                                        {
+                                                            "FellerID", "TestMap"
+                                                        };
+
                             foreach (var col in schema)
-                                columnNames.Add(col.ColumnName);
+                            {
+                                if (!excludedColumns.Contains(col.ColumnName))
+                                    columnNames.Add(col.ColumnName);
+                            }
 
                             if (!reader.HasRows)
                             {
@@ -231,7 +240,7 @@ namespace ELTApp
                             {
                                 var values = new List<string>();
 
-                                for (int i = 0; i < reader.FieldCount; i++)
+                                for (int i = 0; i < columnNames.Count; i++)
                                 {
                                     object value = reader.GetValue(i);
 
