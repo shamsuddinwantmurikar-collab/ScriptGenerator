@@ -50,7 +50,7 @@ namespace ShamsGenScripts
                 {
                     // Linked table (e.g., EM_Site_Buildings)
                     string baseTable = tableName.Replace("Site_", "", StringComparison.OrdinalIgnoreCase);
-                    query = $@"SELECT t.*
+                    query = $@"SELECT t.ID_LIST,t.ID_SITE
                         FROM {tableName} t
                         INNER JOIN {baseTable} b ON t.ID_LIST = b.ID
                         INNER JOIN EM_SITES s ON t.ID_SITE = s.ID
@@ -153,7 +153,7 @@ namespace ShamsGenScripts
                 string insertStatement = $"INSERT INTO {tableName} ({columnsList}) VALUES ({valuesList});";
                 string verificationCheck = "";
 
-                if (insertStatement.Contains("SYSTEM", StringComparison.OrdinalIgnoreCase))
+                if (insertStatement.Contains(", 'SYSTEM'", StringComparison.OrdinalIgnoreCase))
                 {
                     continue; // Skip rows containing 'SYSTEM'
                 }
